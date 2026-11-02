@@ -81,7 +81,7 @@ class MetadataPP(PostProcessor):
         if isinstance(directory, list):
             self._directory = self._directory_format
             self._directory_formatters = [
-                formatter.parse(dirfmt, util.NONE).format_map
+                (dirfmt, formatter.parse(dirfmt, util.NONE).format_map)
                 for dirfmt in directory
             ]
         elif directory:

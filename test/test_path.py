@@ -71,7 +71,7 @@ class TestPathObject(TestPath):
         self.assertTrue(callable(pfmt.clean_path))
 
         self.assertTrue(callable(pfmt.filename_formatter))
-        for fmt in pfmt.directory_formatters:
+        for _, fmt in pfmt.directory_formatters:
             self.assertTrue(callable(fmt))
 
     def test_str(self):
@@ -212,6 +212,50 @@ class TestPathOptions(TestPath):
         pfmt = self._pfmt(kwdict=True)
         self.assertEqual(pfmt.directory    , "./gallery-dl/odd/123/")
         self.assertEqual(pfmt.realdirectory, "./gallery-dl/odd/123/")
+
+    def test_directory_dot_segments(self):
+        config.set((), "base-directory", "/dl")
+        config.set((), "directory", ["{category}", "{artist}", "{title}"])
+
+        pfmt = self._pfmt(kwdict={
+            **KWDICT, "artist": "..", "title": ".",
+        })
+        self.assertEqual(pfmt.realdirectory, "/dl/test/__/_/")
+
+        pfmt = self._pfmt(kwdict={
+            **KWDICT, "artist": " .. ", "title": "foo..bar",
+        })
+        self.assertEqual(pfmt.realdirectory, "/dl/test/__/foo..bar/")
+
+        config.set((), "directory", ["{artist}"])
+        pfmt = self._pfmt(kwdict={**KWDICT, "artist": "a/.."})
+        self.assertEqual(pfmt.realdirectory, "/dl/a_../")
+
+        config.set((), "directory", ["{category}", "{parts:I}"])
+        pfmt = self._pfmt(kwdict={
+            **KWDICT, "parts": ["..", ".", "ok", " .. "],
+        })
+        self.assertEqual(pfmt.realdirectory, "/dl/test/__/_/ok/__/")
+
+        config.set((), "directory", ["{category}"])
+        pfmt = self._pfmt(kwdict={**KWDICT, "artist": ".."})
+        self.assertEqual(
+            pfmt.generate_path(["{category}", "{artist}"]), "test/__")
+        self.assertEqual(pfmt.generate_path(["..", "{artist}"]), "../__")
+
+        # literal '.'/'..' format strings stay usable (#5728)
+        config.set((), "path-strip", "windows")
+        config.set((), "directory", [".", "..", "{artist}", "name."])
+        pfmt = self._pfmt(kwdict={**KWDICT, "artist": ".."})
+        self.assertEqual(pfmt.realdirectory, "/dl/./../__/name/")
+
+        config.set((), "filename", "{name}")
+        self.assertEqual(self._pfmt().build_filename(
+            {**KWDICT, "name": ".."}), "__")
+        self.assertEqual(self._pfmt().build_filename(
+            {**KWDICT, "name": "."}), "_")
+        self.assertEqual(self._pfmt().build_filename(
+            {**KWDICT, "name": "a..b"}), "a..b")
 
     def test_option_basedirectory(self):
         config.set((), "base-directory", "{foo}")

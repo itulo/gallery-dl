@@ -57,7 +57,7 @@ class PathFormat():
             elif isinstance(directory_fmt, dict):
                 self.directory_conditions = [
                     (util.compile_filter(expr), [
-                        formatter.parse(fmt, kwdefault).format_map
+                        (fmt, formatter.parse(fmt, kwdefault).format_map)
                         for fmt in fmts
                     ])
                     for expr, fmts in directory_fmt.items() if expr
@@ -65,7 +65,7 @@ class PathFormat():
                 directory_fmt = directory_fmt.get("", extractor.directory_fmt)
 
             self.directory_formatters = [
-                formatter.parse(dirfmt, kwdefault).format_map
+                (dirfmt, formatter.parse(dirfmt, kwdefault).format_map)
                 for dirfmt in directory_fmt
             ]
         except Exception as exc:
@@ -266,9 +266,24 @@ class PathFormat():
                         break
                 else:
                     fmt = self.filename_formatter
-            return self.clean_path(self.clean_segment(fmt(kwdict)))
+            filename = self.clean_path(self.clean_segment(fmt(kwdict)))
+            if filename in {".", ".."}:
+                filename = filename.replace(".", "_")
+            return filename
         except Exception as exc:
             raise exception.FilenameFormatError(exc)
+
+    def _add_segment(self, result, segment, src=""):
+        segment = segment.strip()
+        if self.strip and segment not in {".", ".."}:
+            segment = segment.rstrip(self.strip)
+        if segment:
+            segment = self.clean_segment(segment)
+        # metadata must not produce a '.' or '..' segment (#9831)
+        if segment in {".", ".."} and src.strip() not in {".", ".."}:
+            segment = segment.replace(".", "_")
+        if segment:
+            result.append(segment)
 
     def build_directory(self, kwdict, segments=None):
         """Apply 'kwdict' to directory format strings"""
@@ -283,26 +298,19 @@ class PathFormat():
                     else:
                         formatters = self.directory_formatters
             else:
-                formatters = [formatter.parse(fmt).format_map
-                              for fmt in segments]
+                formatters = [
+                    (fmt, formatter.parse(fmt).format_map)
+                    for fmt in segments
+                ]
 
             segments = []
-            strip = self.strip
-            for fmt in formatters:
+            for src, fmt in formatters:
                 segment = fmt(kwdict)
                 if segment.__class__ is str:
-                    segment = segment.strip()
-                    if strip and segment not in {".", ".."}:
-                        segment = segment.rstrip(strip)
-                    if segment:
-                        segments.append(self.clean_segment(segment))
+                    self._add_segment(segments, segment, src)
                 else:  # assume list
                     for segment in segment:
-                        segment = segment.strip()
-                        if strip and segment not in {".", ".."}:
-                            segment = segment.rstrip(strip)
-                        if segment:
-                            segments.append(self.clean_segment(segment))
+                        self._add_segment(segments, segment)
             return segments
         except Exception as exc:
             raise exception.DirectoryFormatError(exc)
